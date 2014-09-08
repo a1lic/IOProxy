@@ -57,8 +57,6 @@ extern "C" unsigned int __stdcall ConsoleReaderThread(void * const Argument)
 unsigned int Utf8Inputter::InputterThread()
 {
 	DWORD Read;
-	DWORD RecordsInBuffer;
-	DWORD _i;
 	int Length;
 
 	for(this->AbortingThread = false; !this->AbortingThread;)
@@ -69,12 +67,12 @@ unsigned int Utf8Inputter::InputterThread()
 		}
 
 		::memset(this->UnicodeBuffer, 0, sizeof(WCHAR) * this->UnicodeBufferSize);
-		if(!::ReadConsoleW(this->Input, this->UnicodeBuffer, this->UnicodeBufferSize, &Read, nullptr))
+		if(!::ReadConsoleW(this->Input, this->UnicodeBuffer, static_cast<DWORD>(this->UnicodeBufferSize), &Read, nullptr))
 		{
 			continue;
 		}
 
-		Length = ::WideCharToMultiByte(CP_UTF8, 0, this->UnicodeBuffer, Read, this->Buffer, this->BufferSize, nullptr, nullptr);
+		Length = ::WideCharToMultiByte(CP_UTF8, 0, this->UnicodeBuffer, Read, this->Buffer, static_cast<DWORD>(this->BufferSize), nullptr, nullptr);
 
 		if(Length > 0)
 		{

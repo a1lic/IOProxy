@@ -31,7 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Windows.h>
 #include "Utf8IO.hpp"
 
-extern "C" const _TCHAR * GetNextToken(const _TCHAR * const Str)
+const _TCHAR * げっと⇄ねくすととぉくん(const _TCHAR * const Str)
 {
 	const _TCHAR * _Str;
 	_TCHAR PrevChar;
@@ -89,7 +89,7 @@ extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 		return 1;
 	}
 
-	NewArg = ::GetNextToken(::GetCommandLine());
+	NewArg = ::げっと⇄ねくすととぉくん(::GetCommandLine());
 	::_tprintf_s(_T("Next token : %s\n"), NewArg);
 
 	ArgDup = ::_tcsdup(NewArg);
