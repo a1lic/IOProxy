@@ -1,0 +1,9 @@
+/ARM
+/Win32
+/x64
+/*.suo
+/*.sdf
+/*.user
+
+# UTF-8 Test
+twitter.txt
