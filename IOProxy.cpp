@@ -26,12 +26,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <tchar.h>
+#include <fcntl.h>
+#include <io.h>
 #include <malloc.h>
 #include <process.h>
+#include <stdio.h>
+#include <locale.h>
 #include <Windows.h>
 #include "Utf8IO.hpp"
 
-const _TCHAR * げっと⇄ねくすととぉくん(const _TCHAR * const Str)
+const _TCHAR * GetNextToken(const _TCHAR * const Str)
 {
 	const _TCHAR * _Str;
 	_TCHAR PrevChar;
@@ -68,6 +72,49 @@ const _TCHAR * げっと⇄ねくすととぉくん(const _TCHAR * const Str)
 	return nullptr;
 }
 
+extern "C" void InitializeTerminal()
+{
+	int fd;
+	HANDLE h;
+	DWORD m;
+	int stdin_tty;
+
+#if !defined(_UNICODE)
+	/* Unicode以外の場合はロケールを設定 */
+	::setlocale(LC_ALL, "");
+#endif
+
+#if defined(_UNICODE)
+	/* Unicodeの場合はストリームをUnicodeにする(ファイルの場合はUTF-8に) */
+	fd = ::_fileno(stderr);
+	::_setmode(fd, ::_isatty(fd) ? _O_U16TEXT : _O_U8TEXT);
+
+	fd = ::_fileno(stdout);
+	::_setmode(fd, ::_isatty(fd) ? _O_U16TEXT : _O_U8TEXT);
+#endif
+
+	fd = ::_fileno(stdin);
+	stdin_tty = ::_isatty(fd);
+#if defined(_UNICODE)
+	/* 入力もUnicodeに */
+	::_setmode(fd, stdin_tty ? _O_U16TEXT : _O_U8TEXT);
+#endif
+
+	/* 入力がコンソール入力の場合はマウスの入力を無効化、これにより右クリックメニューが有効になる */
+	if(stdin_tty)
+	{
+		h = (HANDLE)::_get_osfhandle(fd);
+		if(::GetConsoleMode(h, &m))
+		{
+			if(m & ENABLE_MOUSE_INPUT)
+			{
+				m &= ~ENABLE_MOUSE_INPUT;
+				::SetConsoleMode(h, m);
+			}
+		}
+	}
+}
+
 extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 {
 	SECURITY_ATTRIBUTES Attribute;
@@ -89,10 +136,10 @@ extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 		return 1;
 	}
 
-	NewArg = ::げっと⇄ねくすととぉくん(::GetCommandLine());
-	::_tprintf_s(_T("Next token : %s\n"), NewArg);
+	::InitializeTerminal();
 
-	ArgDup = ::_tcsdup(NewArg);
+	NewArg = ::GetNextToken(::GetCommandLine());
+	//::_tprintf_s(_T("Next token : %s\n"), NewArg);
 
 	// パイプのハンドルを継承できるように属性を設定する
 	::memset(&Attribute, 0, sizeof(SECURITY_ATTRIBUTES));
@@ -113,11 +160,13 @@ extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 	Startup.hStdInput = Utf8In;
 
 	// 子プロセスを起動する
+	ArgDup = ::_tcsdup(NewArg);
 	BoolResult = ::CreateProcess(nullptr, ArgDup, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &Startup, &Process);
 	// この時点で子プロセスに渡したハンドルは必要ないので破棄する
 	::CloseHandle(Utf8In);
 	::CloseHandle(Utf8Out);
 	::CloseHandle(Utf8Err);
+	::free(ArgDup);
 	if(BoolResult)
 	{
 		// スレッドのハンドルは不要なので閉じる
