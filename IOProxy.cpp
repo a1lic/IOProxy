@@ -72,12 +72,128 @@ const _TCHAR * GetNextToken(const _TCHAR * const Str)
 	return nullptr;
 }
 
+extern "C" void ColorCodeToAttribute(CONSOLE_SCREEN_BUFFER_INFOEX * const Info, bool IsBackground, int Color)
+{
+	WORD Attr;
+
+	if(Color & 0x8)
+	{
+		Attr = IsBackground ? BACKGROUND_INTENSITY : FOREGROUND_INTENSITY;
+	}
+	else
+	{
+		Attr = 0;
+	}
+
+	switch(Color & 0x7)
+	{
+	case 1:
+		Attr |= IsBackground ? BACKGROUND_BLUE : FOREGROUND_BLUE;
+		break;
+	case 2:
+		Attr |= IsBackground ? BACKGROUND_GREEN : FOREGROUND_GREEN;
+		break;
+	case 3:
+		Attr |= IsBackground ? (BACKGROUND_BLUE | BACKGROUND_GREEN) : (FOREGROUND_BLUE | FOREGROUND_GREEN);
+		break;
+	case 4:
+		Attr |= IsBackground ? BACKGROUND_RED : FOREGROUND_RED;
+		break;
+	case 5:
+		Attr |= IsBackground ? (BACKGROUND_BLUE | BACKGROUND_RED) : (FOREGROUND_BLUE | FOREGROUND_RED);
+		break;
+	case 6:
+		Attr |= IsBackground ? (BACKGROUND_GREEN | BACKGROUND_RED) : (FOREGROUND_GREEN | FOREGROUND_RED);
+		break;
+	case 7:
+		Attr |= IsBackground ? (BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED) : (FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+		break;
+	}
+
+	if(IsBackground)
+	{
+		Info->wAttributes &= ~(BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY);
+	}
+	else
+	{
+		Info->wAttributes &= ~(FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY);
+	}
+
+	Info->wAttributes |= Attr;
+}
+
+extern "C" void SetConsoleStyle()
+{
+	HANDLE _h;
+	TCHAR * ConsoleAttributes;
+	const TCHAR * ConsoleAttribute;
+	TCHAR * _s;
+	long Attr;
+	CONSOLE_SCREEN_BUFFER_INFOEX _c;
+
+	ConsoleAttributes = reinterpret_cast<TCHAR*>(::calloc(256, sizeof(TCHAR)));
+#if defined(_DEBUG)
+	::SetEnvironmentVariable(TEXT("CONSOLE_ATTRIBUTES"), TEXT("F0 B15 W160 w160"));
+#endif
+	if(::GetEnvironmentVariable(TEXT("CONSOLE_ATTRIBUTES"), ConsoleAttributes, 256) > 0)
+	{
+		::SetEnvironmentVariable(TEXT("CONSOLE_ATTRIBUTES"), nullptr);
+		_h = ::GetStdHandle(STD_OUTPUT_HANDLE);
+		::memset(&_c, 0, sizeof(CONSOLE_SCREEN_BUFFER_INFOEX));
+		_c.cbSize = sizeof(CONSOLE_SCREEN_BUFFER_INFOEX);
+		::GetConsoleScreenBufferInfoEx(_h, &_c);
+
+		for(ConsoleAttribute = ConsoleAttributes; ConsoleAttribute; ConsoleAttribute = ::GetNextToken(ConsoleAttribute))
+		{
+			switch(ConsoleAttribute[0] /* & 0x5F*/)
+			{
+			case 'B':
+			_set_bg:
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				::ColorCodeToAttribute(&_c, true, Attr);
+				break;
+			case 'F':
+			_set_fg:
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				::ColorCodeToAttribute(&_c, false, Attr);
+				break;
+			case 'H':
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				_c.dwSize.Y = (SHORT)Attr;
+				break;
+			case 'W':
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				_c.dwSize.X = (SHORT)Attr;
+				break;
+			case 'b':
+				goto _set_bg;
+			case 'f':
+				goto _set_fg;
+			case 'h':
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				_c.dwMaximumWindowSize.Y = (SHORT)Attr;
+				_c.srWindow.Bottom = (SHORT)Attr;
+				break;
+			case 'w':
+				Attr = ::_tcstol(&ConsoleAttribute[1], &_s, 10);
+				_c.dwMaximumWindowSize.X = (SHORT)Attr;
+				_c.srWindow.Right = (SHORT)Attr;
+				break;
+			}
+		}
+
+		::SetConsoleScreenBufferInfoEx(_h, &_c);
+	}
+
+	::free(ConsoleAttributes);
+}
+
 extern "C" void InitializeTerminal()
 {
-	int fd;
-	HANDLE h;
-	DWORD m;
-	int stdin_tty;
+	int _fd;
+	HANDLE _h;
+	DWORD _m;
+	int _stdin_tty;
 
 #if !defined(_UNICODE)
 	/* Unicode以外の場合はロケールを設定 */
@@ -86,33 +202,35 @@ extern "C" void InitializeTerminal()
 
 #if defined(_UNICODE)
 	/* Unicodeの場合はストリームをUnicodeにする(ファイルの場合はUTF-8に) */
-	fd = ::_fileno(stderr);
-	::_setmode(fd, ::_isatty(fd) ? _O_U16TEXT : _O_U8TEXT);
+	_fd = ::_fileno(stderr);
+	::_setmode(_fd, ::_isatty(_fd) ? _O_U16TEXT : _O_U8TEXT);
 
-	fd = ::_fileno(stdout);
-	::_setmode(fd, ::_isatty(fd) ? _O_U16TEXT : _O_U8TEXT);
+	_fd = ::_fileno(stdout);
+	::_setmode(_fd, ::_isatty(_fd) ? _O_U16TEXT : _O_U8TEXT);
 #endif
 
-	fd = ::_fileno(stdin);
-	stdin_tty = ::_isatty(fd);
+	_fd = ::_fileno(stdin);
+	_stdin_tty = ::_isatty(_fd);
 #if defined(_UNICODE)
 	/* 入力もUnicodeに */
-	::_setmode(fd, stdin_tty ? _O_U16TEXT : _O_U8TEXT);
+	::_setmode(_fd, _stdin_tty ? _O_U16TEXT : _O_U8TEXT);
 #endif
 
 	/* 入力がコンソール入力の場合はマウスの入力を無効化、これにより右クリックメニューが有効になる */
-	if(stdin_tty)
+	if(_stdin_tty)
 	{
-		h = (HANDLE)::_get_osfhandle(fd);
-		if(::GetConsoleMode(h, &m))
+		_h = (HANDLE)::_get_osfhandle(_fd);
+		if(::GetConsoleMode(_h, &_m))
 		{
-			if(m & ENABLE_MOUSE_INPUT)
+			if(_m & ENABLE_MOUSE_INPUT)
 			{
-				m &= ~ENABLE_MOUSE_INPUT;
-				::SetConsoleMode(h, m);
+				_m &= ~ENABLE_MOUSE_INPUT;
+				::SetConsoleMode(_h, _m);
 			}
 		}
 	}
+
+	::SetConsoleStyle();
 }
 
 extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
