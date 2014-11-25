@@ -33,6 +33,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <locale.h>
 #include <Windows.h>
+#include <Psapi.h>
 #include "Utf8IO.hpp"
 
 const _TCHAR * GetNextToken(const _TCHAR * const Str)
@@ -245,6 +246,8 @@ extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 	HANDLE Threads[3];
 	const _TCHAR * NewArg;
 	_TCHAR * ArgDup;
+	_TCHAR * ProcessName;
+	_TCHAR * ProcessFileName;
 	BOOL BoolResult;
 	unsigned int ThreadId;
 	unsigned char _i;
@@ -289,6 +292,16 @@ extern "C" int _tmain(int const argc, const _TCHAR * const argv[])
 	{
 		// スレッドのハンドルは不要なので閉じる
 		::CloseHandle(Process.hThread);
+
+		ProcessName = new TCHAR[1024];
+		::GetProcessImageFileName(Process.hProcess, ProcessName, 1024);
+		ProcessFileName = ::_tcsrchr(ProcessName, _T('\\'));
+		if(ProcessFileName != nullptr)
+		{
+			ProcessFileName++;
+		}
+		::SetConsoleTitle(ProcessFileName);
+		delete[] ProcessName;
 
 		// このクラスはスレッドの引数として渡され、スレッドの終了時に自動的に解放される
 		Utf8OutC = new Utf8Outputter(Utf8OutReader, 65536, false);
